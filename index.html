@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tempbox.site — disposable inbox</title>
+<style>
+  :root{
+    --text: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --bg: #f7f7f8;
+    --card: #fff;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --unread: #2563eb;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+  }
+
+  .wrap{
+    max-width:640px;
+    margin:0 auto;
+    padding:48px 20px;
+  }
+
+  h1{
+    font-size:24px;
+    margin:0 0 4px;
+  }
+
+  .subtitle{
+    color:var(--muted);
+    margin:0 0 28px;
+    font-size:15px;
+  }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:20px;
+    margin-bottom:20px;
+  }
+
+  label{
+    display:block;
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+
+  .address-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .address-box{
+    flex:1 1 240px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:10px 12px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size:15px;
+    display:flex;
+    align-items:center;
+    word-break:break-all;
+  }
+
+  button{
+    font-family:inherit;
+    font-size:14px;
+    cursor:pointer;
+    border-radius:6px;
+    border:1px solid var(--border);
+    background:#fff;
+    padding:10px 16px;
+  }
+  button:hover{ background:var(--bg); }
+  button:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .btn-primary{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#fff;
+  }
+  .btn-primary:hover{ background:var(--accent-dark); }
+
+  .meta-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:14px;
+    font-size:13px;
+    color:var(--muted);
+    flex-wrap:wrap;
+    gap:8px;
+  }
+
+  .meta-row a{
+    color:var(--accent);
+    text-decoration:none;
+  }
+  .meta-row a:hover{ text-decoration:underline; }
+
+  .inbox-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:12px;
+  }
+  .inbox-header h2{
+    font-size:16px;
+    margin:0;
+  }
+  .inbox-header span{
+    font-size:13px;
+    color:var(--muted);
+  }
+
+  .messages{
+    display:flex;
+    flex-direction:column;
+    border:1px solid var(--border);
+    border-radius:6px;
+    overflow:hidden;
+  }
+
+  .message{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    width:100%;
+    text-align:left;
+    padding:12px 14px;
+    border:none;
+    border-bottom:1px solid var(--border);
+    background:#fff;
+    border-radius:0;
+  }
+  .message:last-child{ border-bottom:none; }
+  .message:hover{ background:var(--bg); }
+
+  .dot{
+    width:8px; height:8px;
+    border-radius:50%;
+    margin-top:6px;
+    flex-shrink:0;
+  }
+  .message.unread .dot{ background:var(--unread); }
+  .message:not(.unread) .dot{ background:transparent; }
+
+  .msg-body{ flex:1; min-width:0; }
+  .msg-top{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .from{ font-size:14px; }
+  .message.unread .from{ font-weight:600; }
+  .time{ font-size:12px; color:var(--muted); white-space:nowrap; }
+  .subject{ font-size:13px; color:var(--muted); margin-top:2px; }
+  .preview{ font-size:13px; color:var(--muted); opacity:0.75; margin-top:2px; }
+
+  .empty{
+    padding:36px 16px;
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+  }
+
+  .backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.4);
+    display:none;
+    align-items:flex-start;
+    justify-content:center;
+    padding:48px 20px;
+    z-index:10;
+  }
+  .backdrop.open{ display:flex; }
+
+  .viewer{
+    background:#fff;
+    max-width:560px;
+    width:100%;
+    border-radius:8px;
+    max-height:80vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .viewer-head{
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+  }
+  .viewer-head h3{ margin:0 0 4px; font-size:16px; }
+  .viewer-from{ font-size:13px; color:var(--muted); }
+  .viewer-close{
+    width:28px; height:28px;
+    border-radius:6px;
+    padding:0;
+    color:var(--muted);
+  }
+  .viewer-content{
+    padding:20px;
+    overflow-y:auto;
+    font-size:14px;
+    line-height:1.6;
+  }
+
+  .toast{
+    position:fixed;
+    bottom:24px;
+    left:50%;
+    transform:translateX(-50%) translateY(8px);
+    background:#1a1a1a;
+    color:#fff;
+    padding:10px 18px;
+    border-radius:6px;
+    font-size:14px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s ease, transform 0.2s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>tempbox.site</h1>
+  <p class="subtitle">A temporary email address for sign-ups you don't want to give your real one to.</p>
+
+  <div class="card">
+    <label>Your temporary address</label>
+    <div class="address-row">
+      <div class="address-box" id="addressBox" tabindex="0"></div>
+      <button class="btn-primary" id="copyBtn">Copy</button>
+      <button id="newBtn">New address</button>
+    </div>
+    <div class="meta-row">
+      <span id="expiryText">Expires in 10:00</span>
+      <a href="#" id="extendLink">extend 10 minutes</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="inbox-header">
+      <h2>Inbox</h2>
+      <span id="msgCount">Waiting for mail…</span>
+    </div>
+    <div class="messages" id="messages"></div>
+  </div>
+</div>
+
+<div class="backdrop" id="viewerBackdrop">
+  <div class="viewer" role="dialog" aria-modal="true" aria-labelledby="viewerSubject">
+    <div class="viewer-head">
+      <div>
+        <h3 id="viewerSubject"></h3>
+        <div class="viewer-from" id="viewerFrom"></div>
+      </div>
+      <button class="viewer-close" id="viewerClose" aria-label="Close message">✕</button>
+    </div>
+    <div class="viewer-content" id="viewerContent"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+  const words1 = ["quiet","amber","cedar","paper","velvet","brisk","gentle","copper","misty","plain"];
+  const words2 = ["harbor","willow","thistle","meadow","cobalt","lantern","ferry","orchard","pebble","hollow"];
+
+  function randomAddress(){
+    const w1 = words1[Math.floor(Math.random()*words1.length)];
+    const w2 = words2[Math.floor(Math.random()*words2.length)];
+    const num = Math.floor(Math.random()*90+10);
+    return `${w1}.${w2}${num}@tempbox.site`;
+  }
+
+  const addressBox = document.getElementById('addressBox');
+  const copyBtn = document.getElementById('copyBtn');
+  const newBtn = document.getElementById('newBtn');
+  const extendLink = document.getElementById('extendLink');
+  const expiryText = document.getElementById('expiryText');
+  const messagesEl = document.getElementById('messages');
+  const msgCount = document.getElementById('msgCount');
+  const toast = document.getElementById('toast');
+  const viewerBackdrop = document.getElementById('viewerBackdrop');
+  const viewerSubject = document.getElementById('viewerSubject');
+  const viewerFrom = document.getElementById('viewerFrom');
+  const viewerContent = document.getElementById('viewerContent');
+  const viewerClose = document.getElementById('viewerClose');
+
+  let currentAddress = "";
+  let messages = [];
+  let secondsLeft = 600;
+  let timerHandle = null;
+
+  function showToast(text){
+    toast.textContent = text;
+    toast.classList.add('show');
+    setTimeout(()=> toast.classList.remove('show'), 1800);
+  }
+
+  function formatTime(sec){
+    const m = Math.floor(sec/60).toString().padStart(2,'0');
+    const s = (sec%60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  function tickTimer(){
+    secondsLeft -= 1;
+    if(secondsLeft <= 0){
+      expiryText.textContent = "Expired — start a new address";
+      clearInterval(timerHandle);
+      return;
+    }
+    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
+  }
+
+  function renderMessages(){
+    messagesEl.innerHTML = "";
+    if(messages.length === 0){
+      messagesEl.style.border = 'none';
+      messagesEl.innerHTML = `<div class="empty">Nothing's arrived yet. Mail sent to this address will show up here.</div>`;
+      msgCount.textContent = "Waiting for mail…";
+      return;
+    }
+    messagesEl.style.border = '1px solid var(--border)';
+    const unread = messages.filter(m => !m.read).length;
+    msgCount.textContent = unread > 0 ? `${unread} unread` : `${messages.length} message${messages.length>1?'s':''}`;
+
+    messages.forEach((m, idx) => {
+      const row = document.createElement('button');
+      row.className = 'message' + (m.read ? '' : ' unread');
+      row.innerHTML = `
+        <span class="dot"></span>
+        <div class="msg-body">
+          <div class="msg-top">
+            <span class="from">${m.name}</span>
+            <span class="time">${m.time}</span>
+          </div>
+          <div class="subject">${m.subject}</div>
+          <div class="preview">${m.body.slice(0,64)}${m.body.length>64?'…':''}</div>
+        </div>`;
+      row.addEventListener('click', () => openMessage(idx));
+      messagesEl.appendChild(row);
+    });
+  }
+
+  function openMessage(idx){
+    const m = messages[idx];
+    m.read = true;
+    viewerSubject.textContent = m.subject;
+    viewerFrom.textContent = `From ${m.name} · ${m.time}`;
+    viewerContent.textContent = m.body;
+    viewerBackdrop.classList.add('open');
+    renderMessages();
+  }
+
+  viewerClose.addEventListener('click', () => viewerBackdrop.classList.remove('open'));
+  viewerBackdrop.addEventListener('click', (e) => {
+    if(e.target === viewerBackdrop) viewerBackdrop.classList.remove('open');
+  });
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') viewerBackdrop.classList.remove('open');
+  });
+
+  function startFresh(){
+    currentAddress = randomAddress();
+    addressBox.textContent = currentAddress;
+    messages = [];
+    secondsLeft = 600;
+    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
+    renderMessages();
+    clearInterval(timerHandle);
+    timerHandle = setInterval(tickTimer, 1000);
+  }
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(currentAddress).then(() => {
+      showToast("Address copied");
+    }).catch(() => {
+      showToast("Couldn't copy — select and copy manually");
+    });
+  });
+
+  newBtn.addEventListener('click', () => {
+    startFresh();
+    showToast("New address ready");
+  });
+
+  extendLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    secondsLeft += 600;
+    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
+    if(!timerHandle){
+      timerHandle = setInterval(tickTimer, 1000);
+    }
+    showToast("Extended by 10 minutes");
+  });
+
+  startFresh();
+})();
+</script>
+
+</body>
+</html>
