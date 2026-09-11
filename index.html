@@ -624,12 +624,28 @@
       if(availableDomains.length === 0) throw new Error("no domains");
       
       domainSelect.innerHTML = "";
+      
+      // Add the active fetched domains
       availableDomains.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.domain;
         opt.textContent = "@" + d.domain;
         domainSelect.appendChild(opt);
       });
+      
+      // Hardcode the tempmail.site option in maintenance mode
+      const maintenanceOpt = document.createElement('option');
+      maintenanceOpt.value = "tempmail.site";
+      // This text displays in the dropdown itself
+      maintenanceOpt.textContent = "@tempmail.site (Maintenance)";
+      // The disabled property stops users from selecting it
+      maintenanceOpt.disabled = true;
+      // The title attribute displays native tooltip text when hovering over it on desktop
+      maintenanceOpt.title = "in maintenance";
+      
+      // Append it to the bottom of the list
+      domainSelect.appendChild(maintenanceOpt);
+
       domainSelect.disabled = false;
     } catch (err) {
       domainSelect.innerHTML = "<option>Domain load error</option>";
@@ -811,7 +827,7 @@
 
   // Event Listeners
   domainSelect.addEventListener('change', () => {
-    if (domainSelect.value) {
+    if (domainSelect.value && domainSelect.value !== "tempmail.site") {
       localStorage.clear();
       startFresh(domainSelect.value);
       showToast(`Switched domain to @${domainSelect.value}`);
