@@ -292,7 +292,8 @@
 
 <script>
 (function(){
-  const API = "https://api.mail.tm";
+  // Switched to Mail.gw API backend
+  const API = "https://api.mail.gw";
   const POLL_MS = 8000;
 
   const addressBox = document.getElementById('addressBox');
@@ -494,7 +495,7 @@
     }
   }
 
-    copyBtn.addEventListener('click', () => {
+  copyBtn.addEventListener('click', () => {
     if(!address || !token) return;
     navigator.clipboard.writeText(address).then(() => {
       showToast("Address copied");
