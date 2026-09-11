@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>tempbox.site — disposable inbox</title>
+<title>tempbox site</title>
 <style>
   :root{
     --text: #1a1a1a;
@@ -170,7 +170,6 @@
   .message.unread .from{ font-weight:600; }
   .time{ font-size:12px; color:var(--muted); white-space:nowrap; }
   .subject{ font-size:13px; color:var(--muted); margin-top:2px; }
-  .preview{ font-size:13px; color:var(--muted); opacity:0.75; margin-top:2px; }
 
   .empty{
     padding:36px 16px;
@@ -222,6 +221,11 @@
     overflow-y:auto;
     font-size:14px;
     line-height:1.6;
+  }
+  .viewer-content iframe{
+    width: 100%;
+    height: 350px;
+    border: none;
   }
 
   .toast{
@@ -305,8 +309,9 @@
   const viewerContent = document.getElementById('viewerContent');
   const viewerClose = document.getElementById('viewerClose');
 
-  let address = "";
-  let token = "";
+  let address = localStorage.getItem('tb_address') || "";
+  let token = localStorage.getItem('tb_token') || "";
+  let password = localStorage.getItem('tb_pass') || "";
   let messages = [];
   let pollHandle = null;
 
@@ -375,7 +380,21 @@
       });
       if(!res.ok) throw new Error("fetch failed");
       const full = await res.json();
-      viewerContent.textContent = full.text || (full.html ? full.html.join(' ').replace(/<[^>]+>/g,' ') : "(empty message)");
+      
+      viewerContent.innerHTML = "";
+      if(full.html && full.html.length > 0){
+        const iframe = document.createElement('iframe');
+        viewerContent.appendChild(iframe);
+        iframe.contentWindow.document.open();
+        iframe.contentWindow.document.write(full.html.join(' '));
+        iframe.contentWindow.document.close();
+      } else {
+        const pre = document.createElement('pre');
+        pre.style.whiteSpace = "pre-wrap";
+        pre.style.fontFamily = "inherit";
+        pre.textContent = full.text || "(empty message)";
+        viewerContent.appendChild(pre);
+      }
     }catch(err){
       viewerContent.textContent = "Couldn't load this message. Try again in a moment.";
     }
@@ -396,6 +415,11 @@
       const res = await fetch(`${API}/messages`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
+      if(res.status === 401){
+        // Token expired or invalid, recreate account
+        startFresh();
+        return;
+      }
       if(!res.ok) throw new Error("fetch failed");
       const data = await res.json();
       const list = data["hydra:member"] || data.member || [];
@@ -438,8 +462,8 @@
       if(domainList.length === 0) throw new Error("no domains");
       const domain = domainList[0].domain;
 
-      const login = randomString(9);
-      const password = randomString(16);
+      const login = randomString(10);
+      password = randomString(16); // mail.tm requires passwords >= 8 chars
       address = `${login}@${domain}`;
 
       const createRes = await fetch(`${API}/accounts`, {
@@ -457,6 +481,11 @@
       if(!tokenRes.ok) throw new Error("token failed");
       const tokenData = await tokenRes.json();
       token = tokenData.token;
+
+      // Save to localStorage so it persists on reload
+      localStorage.setItem('tb_address', address);
+      localStorage.setItem('tb_token', token);
+      localStorage.setItem('tb_pass', password);
 
       addressBox.textContent = address;
       await checkMail();
@@ -477,6 +506,7 @@
   });
 
   newBtn.addEventListener('click', () => {
+    localStorage.clear();
     startFresh();
     showToast("New address ready");
   });
@@ -486,7 +516,15 @@
     checkMail();
   });
 
-  startFresh();
+  // Initialize: if token exists in storage, try verifying it; otherwise make a new one.
+  if(token && address){
+    addressBox.textContent = address;
+    checkMail().then(() => {
+      if(!pollHandle) pollHandle = setInterval(checkMail, POLL_MS);
+    });
+  } else {
+    startFresh();
+  }
 })();
 </script>
 
