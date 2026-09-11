@@ -114,9 +114,38 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--text-muted);
-    margin-bottom: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  /* Domain Selector */
+  .domain-select {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--bg-page);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 32px 8px 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px;
+    transition: all 0.2s ease;
+  }
+  .domain-select:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+  }
+  .domain-select:hover:not(:disabled) {
+    border-color: var(--primary);
+  }
+  .domain-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   /* Address Generator Area */
@@ -416,9 +445,15 @@
     </div>
 
     <div class="card">
-      <span class="card-label">Your Temporary Address</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <span class="card-label" style="margin-bottom: 0;">Your Temporary Address</span>
+        <select id="domainSelect" class="domain-select" disabled>
+          <option>Loading domains...</option>
+        </select>
+      </div>
+
       <div class="address-row">
-        <div class="address-box" id="addressBox" tabindex="0">Generating...</div>
+        <div class="address-box" id="addressBox" tabindex="0">Connecting...</div>
         <button class="btn-primary" id="copyBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
           Copy
@@ -429,7 +464,7 @@
         </button>
       </div>
       <div class="meta-row">
-        <span id="statusText">Checking for mail…</span>
+        <span id="statusText">Connecting to mail server...</span>
         <a href="#" id="refreshLink">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
           Force check
@@ -513,8 +548,7 @@
 </div>
 
 <script>
-(function(){
-  const API = "/api";
+(async function(){
   const POLL_MS = 8000;
 
   const addressBox = document.getElementById('addressBox');
@@ -526,6 +560,8 @@
   const msgCount = document.getElementById('msgCount');
   const toast = document.getElementById('toast');
   const toastText = document.getElementById('toastText');
+  const domainSelect = document.getElementById('domainSelect');
+  
   const viewerBackdrop = document.getElementById('viewerBackdrop');
   const viewerSubject = document.getElementById('viewerSubject');
   const viewerFrom = document.getElementById('viewerFrom');
@@ -535,8 +571,14 @@
   let address = localStorage.getItem('tb_address') || "";
   let token = localStorage.getItem('tb_token') || "";
   let password = localStorage.getItem('tb_pass') || "";
+  let activeProvider = localStorage.getItem('tb_provider') || "tm"; 
   let messages = [];
   let pollHandle = null;
+  let availableDomains = []; // Will store objects: { domain: "...", provider: "tm" or "gw" }
+
+  function getApiBase() {
+    return activeProvider === "gw" ? "/api/gw" : "/api/tm";
+  }
 
   function showToast(text){
     toastText.textContent = text;
@@ -555,6 +597,43 @@
     let out = "";
     for(let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
     return out;
+  }
+
+  async function loadDomains() {
+    try {
+      // Fetch domains from both API networks simultaneously
+      const [tmRes, gwRes] = await Promise.all([
+        fetch(`/api/tm/domains`).catch(() => null),
+        fetch(`/api/gw/domains`).catch(() => null)
+      ]);
+
+      availableDomains = [];
+
+      if (tmRes && tmRes.ok) {
+        const tmData = await tmRes.json();
+        const tmList = tmData["hydra:member"] || tmData.member || [];
+        tmList.forEach(d => availableDomains.push({ domain: d.domain, provider: "tm" }));
+      }
+      
+      if (gwRes && gwRes.ok) {
+        const gwData = await gwRes.json();
+        const gwList = gwData["hydra:member"] || gwData.member || [];
+        gwList.forEach(d => availableDomains.push({ domain: d.domain, provider: "gw" }));
+      }
+      
+      if(availableDomains.length === 0) throw new Error("no domains");
+      
+      domainSelect.innerHTML = "";
+      availableDomains.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.domain;
+        opt.textContent = "@" + d.domain;
+        domainSelect.appendChild(opt);
+      });
+      domainSelect.disabled = false;
+    } catch (err) {
+      domainSelect.innerHTML = "<option>Domain load error</option>";
+    }
   }
 
   function renderMessages(){
@@ -601,7 +680,7 @@
     renderMessages();
 
     try{
-      const res = await fetch(`${API}/messages/${m.id}`, {
+      const res = await fetch(`${getApiBase()}/messages/${m.id}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if(!res.ok) throw new Error("fetch failed");
@@ -636,7 +715,7 @@
     if(!token) return;
     statusText.textContent = "Checking...";
     try{
-      const res = await fetch(`${API}/messages`, {
+      const res = await fetch(`${getApiBase()}/messages`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if(res.status === 401){
@@ -669,7 +748,7 @@
     }
   }
 
-  async function startFresh(){
+  async function startFresh(specificDomain = null){
     clearInterval(pollHandle);
     addressBox.textContent = "Generating...";
     statusText.textContent = "Setting up inbox...";
@@ -678,25 +757,36 @@
     renderMessages();
 
     try{
-      const domRes = await fetch(`${API}/domains`);
-      if(!domRes.ok) throw new Error("domains failed");
-      const domData = await domRes.json();
-      const domainList = domData["hydra:member"] || domData.member || [];
-      if(domainList.length === 0) throw new Error("no domains");
-      const domain = domainList[0].domain;
+      if (availableDomains.length === 0) {
+        await loadDomains();
+      }
+      if(availableDomains.length === 0) throw new Error("no domains");
+      
+      let domainString = specificDomain;
+      if (!domainString) {
+        domainString = domainSelect.value || availableDomains[0].domain;
+      }
+
+      // Find which API network provides this domain
+      const selectedDomainObj = availableDomains.find(d => d.domain === domainString);
+      if(selectedDomainObj) {
+        activeProvider = selectedDomainObj.provider;
+      }
+
+      domainSelect.value = domainString;
 
       const login = randomString(10);
       password = randomString(16);
-      address = `${login}@${domain}`;
+      address = `${login}@${domainString}`;
 
-      const createRes = await fetch(`${API}/accounts`, {
+      const createRes = await fetch(`${getApiBase()}/accounts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, password })
       });
       if(!createRes.ok) throw new Error("account creation failed");
 
-      const tokenRes = await fetch(`${API}/token`, {
+      const tokenRes = await fetch(`${getApiBase()}/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, password })
@@ -708,6 +798,7 @@
       localStorage.setItem('tb_address', address);
       localStorage.setItem('tb_token', token);
       localStorage.setItem('tb_pass', password);
+      localStorage.setItem('tb_provider', activeProvider); // Save which API to poll
 
       addressBox.textContent = address;
       await checkMail();
@@ -717,6 +808,15 @@
       statusText.textContent = "Check connection and refresh";
     }
   }
+
+  // Event Listeners
+  domainSelect.addEventListener('change', () => {
+    if (domainSelect.value) {
+      localStorage.clear();
+      startFresh(domainSelect.value);
+      showToast(`Switched domain to @${domainSelect.value}`);
+    }
+  });
 
   copyBtn.addEventListener('click', () => {
     if(!address || !token) return;
@@ -729,7 +829,7 @@
 
   newBtn.addEventListener('click', () => {
     localStorage.clear();
-    startFresh();
+    startFresh(domainSelect.value);
     showToast("Generated a new inbox!");
   });
 
@@ -738,7 +838,15 @@
     checkMail();
   });
 
+  // Init
+  await loadDomains();
+  
   if(token && address){
+    const currentDomain = address.split('@')[1];
+    if (currentDomain && Array.from(domainSelect.options).some(opt => opt.value === currentDomain)) {
+       domainSelect.value = currentDomain;
+    }
+    
     addressBox.textContent = address;
     checkMail().then(() => {
       if(!pollHandle) pollHandle = setInterval(checkMail, POLL_MS);
