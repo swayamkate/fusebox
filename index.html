@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>tempbox.site — disposable inbox</title>
+<title>tempbox.site</title>
 <style>
   :root{
     --text: #1a1a1a;
@@ -292,7 +292,8 @@
 
 <script>
 (function(){
-  const API = "https://api.mail.tm";
+  // Uses the Cloudflare Pages _redirects proxy path to prevent CORS errors
+  const API = "/api";
   const POLL_MS = 8000;
 
   const addressBox = document.getElementById('addressBox');
@@ -332,20 +333,6 @@
     let out = "";
     for(let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
     return out;
-  }
-
-  async function apiFetch(endpoint, options = {}) {
-    const url = API + endpoint;
-    try {
-      const res = await fetch(url, options);
-      return res;
-    } catch(err) {
-      // Fallback proxy execution if direct cross-origin is blocked by browser policies
-      const proxyUrl = `https://api.allorigins.win/raw?url=` + encodeURIComponent(url);
-      const proxyOptions = { ...options };
-      // Note: AllOrigins GET proxy wrapper
-      return await fetch(proxyUrl, proxyOptions);
-    }
   }
 
   function renderMessages(){
