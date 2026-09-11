@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Generate a free temporary email address to protect your privacy and avoid spam. tempbox.site provides instant, secure, and disposable inboxes.">
 <title>tempbox.site — Premium Free Disposable Email</title>
+
+<!-- Google AdSense Verification Script -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5981385551459131" crossorigin="anonymous"></script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -431,7 +435,7 @@
 
 <div class="page-container">
   
-  <!-- LEFT AD SLOT -->
+  <!-- LEFT AD SLOT (Replace placeholder with your approved Google AdSense unit code once live) -->
   <aside class="ad-slot">
     <div class="ad-content">Ad Space<br>(160x600)</div>
   </aside>
@@ -509,7 +513,7 @@
 
   </div>
 
-  <!-- RIGHT AD SLOT -->
+  <!-- RIGHT AD SLOT (Replace placeholder with your approved Google AdSense unit code once live) -->
   <aside class="ad-slot">
     <div class="ad-content">Ad Space<br>(160x600)</div>
   </aside>
@@ -523,7 +527,7 @@
     <a href="#">Terms of Service</a>
     <a href="mailto:contact@tempbox.site">Contact Us</a>
   </div>
-  <div>&copy; 2024 tempbox.site. All rights reserved.</div>
+  <div>&copy; 2026 tempbox.site. All rights reserved.</div>
 </footer>
 
 <!-- MODAL / VIEWER -->
@@ -574,7 +578,7 @@
   let activeProvider = localStorage.getItem('tb_provider') || "tm"; 
   let messages = [];
   let pollHandle = null;
-  let availableDomains = []; // Will store objects: { domain: "...", provider: "tm" or "gw" }
+  let availableDomains = [];
 
   function getApiBase() {
     return activeProvider === "gw" ? "/api/gw" : "/api/tm";
@@ -601,7 +605,6 @@
 
   async function loadDomains() {
     try {
-      // Fetch domains from both API networks simultaneously
       const [tmRes, gwRes] = await Promise.all([
         fetch(`/api/tm/domains`).catch(() => null),
         fetch(`/api/gw/domains`).catch(() => null)
@@ -625,7 +628,6 @@
       
       domainSelect.innerHTML = "";
       
-      // Add the active fetched domains
       availableDomains.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.domain;
@@ -633,17 +635,11 @@
         domainSelect.appendChild(opt);
       });
       
-      // Hardcode the tempmail.site option in maintenance mode
       const maintenanceOpt = document.createElement('option');
       maintenanceOpt.value = "tempmail.site";
-      // This text displays in the dropdown itself
       maintenanceOpt.textContent = "@tempmail.site (Maintenance)";
-      // The disabled property stops users from selecting it
       maintenanceOpt.disabled = true;
-      // The title attribute displays native tooltip text when hovering over it on desktop
       maintenanceOpt.title = "in maintenance";
-      
-      // Append it to the bottom of the list
       domainSelect.appendChild(maintenanceOpt);
 
       domainSelect.disabled = false;
@@ -783,7 +779,6 @@
         domainString = domainSelect.value || availableDomains[0].domain;
       }
 
-      // Find which API network provides this domain
       const selectedDomainObj = availableDomains.find(d => d.domain === domainString);
       if(selectedDomainObj) {
         activeProvider = selectedDomainObj.provider;
@@ -814,7 +809,7 @@
       localStorage.setItem('tb_address', address);
       localStorage.setItem('tb_token', token);
       localStorage.setItem('tb_pass', password);
-      localStorage.setItem('tb_provider', activeProvider); // Save which API to poll
+      localStorage.setItem('tb_provider', activeProvider);
 
       addressBox.textContent = address;
       await checkMail();
@@ -825,7 +820,6 @@
     }
   }
 
-  // Event Listeners
   domainSelect.addEventListener('change', () => {
     if (domainSelect.value && domainSelect.value !== "tempmail.site") {
       localStorage.clear();
@@ -854,7 +848,6 @@
     checkMail();
   });
 
-  // Init
   await loadDomains();
   
   if(token && address){
