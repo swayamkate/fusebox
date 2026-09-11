@@ -257,8 +257,8 @@
       <button id="newBtn">New address</button>
     </div>
     <div class="meta-row">
-      <span id="expiryText">Expires in 10:00</span>
-      <a href="#" id="extendLink">extend 10 minutes</a>
+      <span id="statusText">Checking for mail…</span>
+      <a href="#" id="refreshLink">check now</a>
     </div>
   </div>
 
@@ -288,21 +288,14 @@
 
 <script>
 (function(){
-  const words1 = ["quiet","amber","cedar","paper","velvet","brisk","gentle","copper","misty","plain"];
-  const words2 = ["harbor","willow","thistle","meadow","cobalt","lantern","ferry","orchard","pebble","hollow"];
-
-  function randomAddress(){
-    const w1 = words1[Math.floor(Math.random()*words1.length)];
-    const w2 = words2[Math.floor(Math.random()*words2.length)];
-    const num = Math.floor(Math.random()*90+10);
-    return `${w1}.${w2}${num}@tempbox.site`;
-  }
+  const API = "https://api.mail.tm";
+  const POLL_MS = 8000;
 
   const addressBox = document.getElementById('addressBox');
   const copyBtn = document.getElementById('copyBtn');
   const newBtn = document.getElementById('newBtn');
-  const extendLink = document.getElementById('extendLink');
-  const expiryText = document.getElementById('expiryText');
+  const refreshLink = document.getElementById('refreshLink');
+  const statusText = document.getElementById('statusText');
   const messagesEl = document.getElementById('messages');
   const msgCount = document.getElementById('msgCount');
   const toast = document.getElementById('toast');
@@ -312,10 +305,10 @@
   const viewerContent = document.getElementById('viewerContent');
   const viewerClose = document.getElementById('viewerClose');
 
-  let currentAddress = "";
+  let address = "";
+  let token = "";
   let messages = [];
-  let secondsLeft = 600;
-  let timerHandle = null;
+  let pollHandle = null;
 
   function showToast(text){
     toast.textContent = text;
@@ -323,20 +316,17 @@
     setTimeout(()=> toast.classList.remove('show'), 1800);
   }
 
-  function formatTime(sec){
-    const m = Math.floor(sec/60).toString().padStart(2,'0');
-    const s = (sec%60).toString().padStart(2,'0');
-    return `${m}:${s}`;
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str == null ? "" : String(str);
+    return div.innerHTML;
   }
 
-  function tickTimer(){
-    secondsLeft -= 1;
-    if(secondsLeft <= 0){
-      expiryText.textContent = "Expired — start a new address";
-      clearInterval(timerHandle);
-      return;
-    }
-    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
+  function randomString(len){
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let out = "";
+    for(let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
+    return out;
   }
 
   function renderMessages(){
@@ -354,29 +344,41 @@
     messages.forEach((m, idx) => {
       const row = document.createElement('button');
       row.className = 'message' + (m.read ? '' : ' unread');
+      const fromLabel = m.from?.name || m.from?.address || "Unknown sender";
       row.innerHTML = `
         <span class="dot"></span>
         <div class="msg-body">
           <div class="msg-top">
-            <span class="from">${m.name}</span>
-            <span class="time">${m.time}</span>
+            <span class="from">${escapeHtml(fromLabel)}</span>
+            <span class="time">${escapeHtml(m.time)}</span>
           </div>
-          <div class="subject">${m.subject}</div>
-          <div class="preview">${m.body.slice(0,64)}${m.body.length>64?'…':''}</div>
+          <div class="subject">${escapeHtml(m.subject || "(no subject)")}</div>
         </div>`;
       row.addEventListener('click', () => openMessage(idx));
       messagesEl.appendChild(row);
     });
   }
 
-  function openMessage(idx){
+  async function openMessage(idx){
     const m = messages[idx];
     m.read = true;
-    viewerSubject.textContent = m.subject;
-    viewerFrom.textContent = `From ${m.name} · ${m.time}`;
-    viewerContent.textContent = m.body;
+    const fromLabel = m.from?.name || m.from?.address || "Unknown sender";
+    viewerSubject.textContent = m.subject || "(no subject)";
+    viewerFrom.textContent = `From ${fromLabel} · ${m.time}`;
+    viewerContent.textContent = "Loading…";
     viewerBackdrop.classList.add('open');
     renderMessages();
+
+    try{
+      const res = await fetch(`${API}/messages/${m.id}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if(!res.ok) throw new Error("fetch failed");
+      const full = await res.json();
+      viewerContent.textContent = full.text || (full.html ? full.html.join(' ').replace(/<[^>]+>/g,' ') : "(empty message)");
+    }catch(err){
+      viewerContent.textContent = "Couldn't load this message. Try again in a moment.";
+    }
   }
 
   viewerClose.addEventListener('click', () => viewerBackdrop.classList.remove('open'));
@@ -387,19 +389,87 @@
     if(e.key === 'Escape') viewerBackdrop.classList.remove('open');
   });
 
-  function startFresh(){
-    currentAddress = randomAddress();
-    addressBox.textContent = currentAddress;
+  async function checkMail(){
+    if(!token) return;
+    statusText.textContent = "Checking…";
+    try{
+      const res = await fetch(`${API}/messages`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if(!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      const list = data["hydra:member"] || data.member || [];
+      const knownIds = new Set(messages.map(m => m.id));
+      const incoming = list.filter(m => !knownIds.has(m.id));
+
+      if(incoming.length > 0){
+        incoming.forEach(m => {
+          messages.unshift({
+            id: m.id,
+            from: m.from,
+            subject: m.subject,
+            time: new Date(m.createdAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}),
+            read: false
+          });
+        });
+        renderMessages();
+        showToast(incoming.length === 1 ? "New mail arrived" : `${incoming.length} new messages`);
+      }
+      const now = new Date();
+      statusText.textContent = `Last checked ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+    }catch(err){
+      statusText.textContent = "Couldn't reach the mail server — will retry";
+    }
+  }
+
+  async function startFresh(){
+    clearInterval(pollHandle);
+    addressBox.textContent = "Generating address…";
+    statusText.textContent = "Setting up inbox…";
     messages = [];
-    secondsLeft = 600;
-    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
+    token = "";
     renderMessages();
-    clearInterval(timerHandle);
-    timerHandle = setInterval(tickTimer, 1000);
+
+    try{
+      const domRes = await fetch(`${API}/domains`);
+      if(!domRes.ok) throw new Error("domains failed");
+      const domData = await domRes.json();
+      const domainList = domData["hydra:member"] || domData.member || [];
+      if(domainList.length === 0) throw new Error("no domains");
+      const domain = domainList[0].domain;
+
+      const login = randomString(9);
+      const password = randomString(16);
+      address = `${login}@${domain}`;
+
+      const createRes = await fetch(`${API}/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, password })
+      });
+      if(!createRes.ok) throw new Error("account creation failed");
+
+      const tokenRes = await fetch(`${API}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, password })
+      });
+      if(!tokenRes.ok) throw new Error("token failed");
+      const tokenData = await tokenRes.json();
+      token = tokenData.token;
+
+      addressBox.textContent = address;
+      await checkMail();
+      pollHandle = setInterval(checkMail, POLL_MS);
+    }catch(err){
+      addressBox.textContent = "Couldn't generate an address";
+      statusText.textContent = "Check your connection and try again";
+    }
   }
 
   copyBtn.addEventListener('click', () => {
-    navigator.clipboard.writeText(currentAddress).then(() => {
+    if(!address || !token) return;
+    navigator.clipboard.writeText(address).then(() => {
       showToast("Address copied");
     }).catch(() => {
       showToast("Couldn't copy — select and copy manually");
@@ -411,14 +481,9 @@
     showToast("New address ready");
   });
 
-  extendLink.addEventListener('click', (e) => {
+  refreshLink.addEventListener('click', (e) => {
     e.preventDefault();
-    secondsLeft += 600;
-    expiryText.textContent = `Expires in ${formatTime(secondsLeft)}`;
-    if(!timerHandle){
-      timerHandle = setInterval(tickTimer, 1000);
-    }
-    showToast("Extended by 10 minutes");
+    checkMail();
   });
 
   startFresh();
